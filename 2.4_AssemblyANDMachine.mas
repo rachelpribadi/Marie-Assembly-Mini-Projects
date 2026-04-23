@@ -1,0 +1,81 @@
+/R = Assembly (BLUE)
+/P = Machine Code (RED)
+
+/THE MAIN PROGRAM
+Start,  JNS DrawR       /Draw Blue R (assembly subroutine) / stores the return address into memory at DrawR and jumps to the code immediately after the HEX 0 at DrawR
+        Jump MachineCode / jump into machine-code block for P
+        
+
+/DRAW R (ASSEMBLY, BLUE) - LEFT SIDE
+
+DrawR,  HEX 0           / return address slot for JNS
+
+        Load PixelBlue	/ AC = 00A8FF
+
+/ R – vertical left (rows 1 to 8, col 1)
+        Store 0F11      / row 1, col 1	/ Memory[0F11] = 00A8FF
+        Store 0F21      / row 2, col 1
+        Store 0F31      / row 3, col 1
+        Store 0F41      / row 4, col 1
+        Store 0F51      / row 5, col 1
+        Store 0F61      / row 6, col 1
+        Store 0F71      / row 7, col 1
+        Store 0F81      / row 8, col 1
+
+/ R – top bar (row 1, col 2 to 4)
+        Store 0F12		/ row 1, col 2
+        Store 0F13		/ row 1, col 3
+        Store 0F14		/ row 1, col 4
+
+/ R – upper right vertical (col 4, rows 2 to 3)
+        Store 0F24		/ row 2, col 4
+        Store 0F34		/ row 3, col 4
+
+/ R – middle bar (row 4, col 2 to 4)
+        Store 0F42		/ row 4, col 2
+        Store 0F43		/ row 4, col 3
+        Store 0F44		/ row 4, col 4
+
+/ R – diagonal leg (down-right)
+        Store 0F52       / row 5, col 2
+        Store 0F63       / row 6, col 3
+        Store 0F74       / row 7, col 4
+        Store 0F85       / row 8, col 5
+
+        JumpI DrawR      / return to caller
+
+
+/  MACHINE CODE FOR P (RED) - RIGHT SIDE
+MachineCode, Load PixelRed    / let assembler encode this as 1xxx; AC = red
+
+/ P – Top bar (row 1, col 10–14)
+        HEX 2F1A        / Store AC -> address F1A	/2 is opcode, which stores instruction and F1A is operand	/Memory[F1A] = F000
+        HEX 2F1B		/ row 1, col 11
+        HEX 2F1C		/ row 1, col 12
+        HEX 2F1D		/ row 1, col l3
+        HEX 2F1E		/ row 1, col 14
+
+/ P – Left vertical (rows 2–8, col 10)
+        HEX 2F2A		/ row 2, col 10
+        HEX 2F3A		/ row 3, col 10
+        HEX 2F4A		/ row 4, col 10
+        HEX 2F5A		/ row 5, col 10
+        HEX 2F6A		/ row 6, col 10
+        HEX 2F7A		/ row 7, col 10
+        HEX 2F8A		/ row 8, col 10
+
+/ P – Middle bar (row 4, col 11–13)
+        HEX 2F4B		/ row 4, col 11
+        HEX 2F4C		/ row 4, col 12		
+        HEX 2F4D		/ row 4, col 13
+
+/ P – Right vertical part (col 14, rows 2–4)
+        HEX 2F2E		/ row 2, col 14		
+        HEX 2F3E		/ row 3, col 14		
+        HEX 2F4E		/ row 4, col 14
+
+        HEX 7000        / HALT (machine code)
+
+/  COLOR CONSTANTS
+PixelBlue, HEX 00A8FF   / blue pixel value for R
+PixelRed,  HEX F000     / red pixel value for P

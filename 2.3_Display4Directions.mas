@@ -1,0 +1,285 @@
+/ TASK 2.3
+
+MainLoop,   Input
+            Store Length
+
+            Input
+            Store Width
+
+/ Validate LENGTH (if 0: it's invalid and if >F: it's invalid)
+
+            Load Length			  	/ NEED TO add valid length label for clarity
+            Skipcond 400          	/ if AC == 0 skip next and it is invalid
+            Jump CheckLengthHigh  	/ len != 0, now check whether it's >F
+            Jump InvalidInput     	/ len = 0, it's invalid
+
+CheckLengthHigh, Load Length	  	/ if length is not 0, now check if it's >F
+            Subt HexF             	/ AC = len - F
+            Skipcond 800          	/ if AC > 0 skip next, and it's invalid
+            Jump ValidWidth      	/ NEED TO change to validwidth / if length is valid, check if width is valid
+            Jump InvalidInput     	/ len > F then it's invalid
+
+
+/ Validate WIDTH (if >F then it's invalid but 0 is allowed)
+
+ValidWidth,  Load Width		  	/ NEED TO change to valid width
+            Subt HexF             	/ AC = width - F
+            Skipcond 800          	/ if AC > 0 skip next
+            Jump DecideShape      	/ width <= F then it's ok so decide shape
+            Jump InvalidInput     	/ width > F then it's invalid
+
+
+/ Decide which shape to draw
+DecideShape,  Load Length
+            Subt HexA             	/ AC = Length - A
+            Skipcond 000          	/ If AC is less than 0, it means it skips next line
+            Jump TriangleCase     	/ If AC > 0, it means between A - F so a triangle will be drawn
+            Jump SquareRectCase   	/ If AC < 0, it means either square or rectangle that will be drawn
+
+
+/ Whether a Square or Rectangle will be drawn
+/   if width = 0, draw square (set width = length)
+/   if width is between 1 and F, draw rectangle
+SquareRectCase, Load Width
+            Skipcond 400          	/ if width == 0 then it goes to SquareCase
+            Jump RectCase         	/ width != 0, then rectangle will be drawn
+
+/ when width = 0 , a square will be drawn. Drawing the square is basically just a rectangle with width=length
+SquareCase,  Load Length		  	/ AC = length
+            Store Width           	/ this sets the Width = Length to make it a square
+            JNS ClearDisplay	  	/ because we want to always clear display first, this jumps to ClearDisplay subroutine, and store the return address in first word at ClearDisplay
+            JNS DrawRectangle	  	/ calls the rectangle subroutine
+            Jump MainLoop		  	/ When done, it goes back to ask for a new input of length and width
+
+/ if width != 0, a rectangle will be drawn with the Length x Width
+RectCase,   JNS ClearDisplay	  	/ clear the display first
+            JNS DrawRectangle	  	/ calls the rectangle subroutine to draw the length x width rectangle
+            Jump MainLoop	      	/ when done, it goes back to ask for a new input of length and width
+
+
+/ when length is between A to F, a triangle is drawn
+/ Width represents the number of cells on each side
+TriangleCase, JNS ClearDisplay	  	/ clear the display first
+            JNS DrawTriangle	  	/ calls the triangle subroutine
+            Jump MainLoop		  	/ returns back to ask for new input for the next shape
+
+
+/ if there is invalid input then clear and exit it
+InvalidInput,  JNS ClearDisplay	  	/ clears the display
+            Halt				  	/ stops the program
+
+
+/Rectangle subroutine  (Length x Width)
+/   Rows   : 0 .. Width-1   (vertical, “height”)
+/   Cols   : 0 .. Length-1  (horizontal, “length”)
+DrawRectangle, HEX 0        		/ return address storage for JNS
+
+            Load Zero				/ start from row 0, AC <- 0
+            Store Row				/ Row <- 0
+
+/ iterate over the rows 
+RectRowLoop,  Load Row				/ AC = current row number
+            Subt Width            	/ AC = Row - Width. If row < width then AC < 0, thus skipcond true
+            Skipcond 000          	/ If AC is negative, skip next instruction. If AC is zero or positive, don't skip
+            Jump RectDone         	/ So if the AC is zero or positive, then end the row loop. If you skip it, start new row. If you dont skip it, finish rectangle
+            Load Zero			  
+            Store Col			  	/ everytime you start new row, column must reset back to 0
+
+/ iterate over columns
+RectColLoop,  Load Col		
+            Subt Length           	/ AC = Col - Length If col < length then AC < 0, thus skipcond is true
+            Skipcond 000          	/ If AC negative, skip next instruction and continue at DrawPixelRect
+            Jump NextRectRow      	/ If AC is 0 or positive. 
+
+/ Draw Pixel at (Row, Col) /0F00 + (Row × 16) + Col
+DrawPixelRect, Load Row			  	/ AC = Row
+            Store TempRow		  	/ TempRow = Row
+									
+            Load Zero			  	/ AC = 0
+            Store AddrOffset      	/ AddrOffset = 0 / AddrOffset = Row * 16
+
+/ Multiply row by 16 because 16 columns per row in the delivery
+MulLoopR,  Load TempRow
+            Skipcond 400          	/ if TempRow == 0 skip next
+            Jump DoMulR           	/ TempRow != 0 then do one multiplication step
+            Jump EndMulR          	/ TempRow == 0 then done
+
+DoMulR,     Load AddrOffset
+            Add Sixteen
+            Store AddrOffset
+/ Now decrement Temprow, this wil repeat until TempRow becomes 0 
+            Load TempRow
+            Subt One
+            Store TempRow
+            Jump MulLoopR
+
+EndMulR,  Load AddrOffset
+            Add Col				  	/ (Row × 16) + Col
+            Add Hex0F00           	/ base address of display
+            Store CurrentAddr	  	/ Hex0F00 + AddrOffset + Col. This memory is where the pixel goes
+
+            Load PixelOn		  	/ Then it writes FFFF to memory at computed address
+            StoreI CurrentAddr    	/ store FFFF into memory[CurrentAddr] / turn on pixel
+
+/ Increment Col so the program draws the next pixel in the row
+            Load Col			  
+            Add One				 
+            Store Col
+            Jump RectColLoop
+
+/If the row ends, move to the next row
+/Move to the next row after Col reaches Length
+NextRectRow, Load Row
+            Add One
+            Store Row
+            Jump RectRowLoop
+
+RectDone, JumpI DrawRectangle 		/ JumpI because JNS DrawRectangle saved return address in memory at DrawRectangle. JumpI loads that return address.
+
+
+
+/ TRIANGLE SUBROUTINE - SIZE = WIDTH
+/Horizontal top side (when Row = 0)
+/Vertical left side (when Col = 0)
+/Rising diagonal (when Row + Col = Width - 1)
+
+DrawTriangle, HEX 0
+
+            Load Zero
+            Store Row				/ Start at Row = 0
+
+TriRowLoop, Load Row				/ Outer row loop / AC = Row
+            Subt Width				/AC = Row - Width
+            Skipcond 000			/ If AC < Width, AC < 0, so skip next instruction
+            Jump TriDone			/ When AC >= Width, Jump TriDone
+
+            Load Zero
+            Store Col				/ Start at Col = 0 for each row
+
+TriColLoop, Load Col				/ Inner Col Loop / AC = Col
+            Subt Width				/ AC = Col - Width
+            Skipcond 000			/ If Col < Width, skip next instruction
+            Jump NextTriRow
+
+
+/CONDITIONS TO DRAW A PIXEL
+
+/TOP SIDE when Row = 0
+CheckTop,   Load Row
+            Skipcond 400			/ If row == 0, skip next
+            Jump CheckLeft			/ If row != 0, we check other edges
+            Jump DrawTriPixel
+
+/LEFT SIDE when Col = 0
+CheckLeft,   Load Col
+             Skipcond 400			/If col == 0, skip next 
+             Jump CheckDiag 		/If col != 0, we check diagonal
+             Jump DrawTriPixel
+
+/DIAGONAL when Row + Col = Width - 1
+CheckDiag,   Load Row				/AC = Row
+             Add Col				/AC = Row + Col
+             Subt Width				/AC = Row + Col - Width
+             Add One        		/AC = (Row + Col) - (Width - 1)
+             Skipcond 400   		/If AC == 0, skip next and draw
+             Jump SkipTriPixel	
+             Jump DrawTriPixel
+
+/ skip drawing
+/ Increments col by 1 and return to TriColLoop without drawing
+SkipTriPixel, Load Col
+              Add One
+              Store Col
+              Jump TriColLoop
+
+/ draw pixel / the same pattern as rectangle 
+DrawTriPixel, Load Row
+              Store TempRow
+              Load Zero
+              Store AddrOffset
+
+/ multiply Row * 16
+MulLoopT,     Load TempRow
+              Skipcond 400
+              Jump DoMulT
+              Jump EndMulT			/ when TempRow hits 0, exit
+
+DoMulT,       Load AddrOffset
+              Add Sixteen
+              Store AddrOffset
+              Load TempRow
+              Subt One
+              Store TempRow
+              Jump MulLoopT
+			  
+
+EndMulT,      Load AddrOffset
+              Add Col
+              Add Hex0F00
+              Store CurrentAddr
+
+              Load PixelOn			/ AC = FFFF
+              StoreI CurrentAddr	/ Turn on that pixel
+
+/Move to next column
+              Load Col
+              Add One
+              Store Col
+              Jump TriColLoop
+
+NextTriRow,   Load Row				/ increment row then go back to the row loop
+              Add One
+              Store Row
+              Jump TriRowLoop
+
+TriDone,      JumpI DrawTriangle	/when row loop is finished, TriDone returns using JumpI DrawTriangle, same way as the rectangle did
+
+
+
+
+/ CLEAR DISPLAY SUBROUTINE / Set all display cells from 0F00 to 0FFF to zero
+
+ClearDisplay, HEX 0				
+
+            Load Hex0F00			/AC = base address of display	
+            Store CurrentAddr		/Start pointer at 0F00
+
+ClearLoop,  Load Zero				/AC = 0
+            StoreI CurrentAddr   	/ clear this pixel
+
+/Increment pointer to next memory location
+            Load CurrentAddr
+            Add One
+            Store CurrentAddr    
+									
+            Load CurrentAddr	 	/AC = CurrentAddr
+            Subt Hex1000         	/AC = CurrentAddr - 1000h
+            Skipcond 000         	/ If CurrentAddr < 1000h, AC < 0, so skipcond skips next instruction
+            JumpI ClearDisplay		/ If CurrentAddr >= 1000h → finished
+            Jump ClearLoop
+
+
+
+/ VARIABLES & CONSTANTS
+Length,      DEC 0
+Width,       DEC 0
+Row,         DEC 0
+Col,         DEC 0
+TempRow,     DEC 0
+AddrOffset,  DEC 0
+CurrentAddr, DEC 0
+
+PixelOn,     HEX FFFF
+Zero,        DEC 0
+One,         DEC 1
+Sixteen,     DEC 16
+Hex0F00,     HEX 0F00
+Hex1000,     HEX 1000
+HexF,        HEX 000F
+HexA,        HEX 000A
+
+
+
+
+
+
